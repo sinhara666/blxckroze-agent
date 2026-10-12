@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blxckroze Agent: Your Own Personal AI</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root{
+    --bg:#0a0a10; --panel:rgba(255,255,255,.055); --panel2:rgba(255,255,255,.09);
+    --line:rgba(255,255,255,.13); --txt:#f4f1fa; --dim:#bcb7d1; --faint:#8d87a3;
+    --red:#e5484d; --red2:#ff6b5e; --violet:#8b5cf6; --green:#3ddc84;
+  }
+  body{ font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--txt); min-height:100vh; }
+  .bgfx{ position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(760px 460px at 8% -8%, rgba(229,72,77,.20), transparent 60%),
+      radial-gradient(860px 560px at 92% 4%, rgba(139,92,246,.15), transparent 60%),
+      radial-gradient(1000px 760px at 50% 118%, rgba(47,79,79,.38), transparent 62%),
+      linear-gradient(180deg,#0a0a10,#0d0b15 55%,#0a0a10); }
+  .bgfx::after{ content:''; position:absolute; inset:0;
+    background-image:linear-gradient(rgba(255,255,255,.026) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.026) 1px,transparent 1px);
+    background-size:54px 54px; animation:gridmove 24s linear infinite; }
+  @keyframes gridmove{ from{ background-position:0 0,0 0; } to{ background-position:0 54px,0 0; } }
+  .wrap{ position:relative; z-index:1; max-width:980px; margin:0 auto; padding:18px 14px 60px; }
+  header{ text-align:center; padding:20px 0 4px; }
+  .logo{ font-size:.74rem; letter-spacing:.42em; color:var(--faint); text-transform:uppercase; }
+  h1{ font-size:clamp(1.9rem,5.6vw,3rem); font-weight:800; line-height:1.05; margin-top:6px;
+    background:linear-gradient(92deg,#fff 8%,#ffb3ab 45%,var(--red2) 65%,var(--violet));
+    -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .sub{ color:var(--dim); max-width:600px; margin:10px auto 0; font-size:.99rem; line-height:1.5; }
+  .tabs{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:20px; }
+  .tab{ border:1px solid var(--line); background:var(--panel); color:var(--dim); border-radius:999px; padding:9px 18px; font-size:.93rem; cursor:pointer; transition:.16s; }
+  .tab:hover{ transform:translateY(-1px); color:var(--txt); }
+  .tab.on{ background:linear-gradient(92deg,rgba(229,72,77,.85),rgba(139,92,246,.85)); color:#fff; border-color:transparent; font-weight:700; }
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:18px; backdrop-filter:blur(14px); box-shadow:0 18px 50px rgba(0,0,0,.45); margin-top:18px; }
+  .hidden{ display:none; }
+  /* chat */
+  #chatLog{ display:flex; flex-direction:column; gap:12px; max-height:56vh; overflow-y:auto; padding:4px 2px 10px; }
+  .msg{ max-width:86%; padding:12px 15px; border-radius:16px; line-height:1.55; font-size:.97rem; white-space:pre-wrap; word-break:break-word; }
+  .msg.user{ align-self:flex-end; background:linear-gradient(120deg,rgba(229,72,77,.85),rgba(176,42,110,.85)); border-bottom-right-radius:5px; }
+  .msg.agent{ align-self:flex-start; background:rgba(255,255,255,.07); border:1px solid var(--line); border-bottom-left-radius:5px; }
+  .msg.sys{ align-self:center; background:transparent; border:1px dashed rgba(255,255,255,.22); color:var(--faint); font-size:.84rem; text-align:center; }
+  .msg .who{ display:block; font-size:.7rem; letter-spacing:.14em; text-transform:uppercase; opacity:.75; margin-bottom:4px; }
+  .chatbar{ display:flex; gap:9px; margin-top:12px; }
+  .chatbar textarea{ flex:1; background:rgba(0,0,0,.35); border:1px solid var(--line); border-radius:14px; color:var(--txt); padding:12px 14px; font-size:1rem; font-family:inherit; resize:none; min-height:50px; max-height:120px; }
+  .chatbar textarea:focus{ outline:2px solid rgba(229,72,77,.55); }
+  .send{ border:none; cursor:pointer; border-radius:14px; padding:0 22px; font-size:1rem; font-weight:700; color:#fff;
+    background:linear-gradient(92deg,var(--red),#b02a6e 60%,var(--violet)); box-shadow:0 10px 26px rgba(229,72,77,.3); transition:.16s; }
+  .send:hover{ transform:translateY(-2px); }
+  .send:disabled{ opacity:.55; transform:none; cursor:wait; }
+  /* generic */
+  label{ display:block; font-size:.79rem; letter-spacing:.06em; text-transform:uppercase; color:var(--dim); margin:14px 0 6px; }
+  label:first-of-type{ margin-top:2px; }
+  input[type=text], input[type=password], textarea, select{ width:100%; background:rgba(0,0,0,.35); border:1px solid var(--line); border-radius:12px; color:var(--txt); padding:11px 13px; font-size:.97rem; font-family:inherit; }
+  textarea{ min-height:70px; resize:vertical; }
+  input:focus, textarea:focus, select:focus{ outline:2px solid rgba(229,72,77,.55); border-color:transparent; }
+  .btn{ border:none; cursor:pointer; border-radius:13px; padding:12px 20px; font-size:.96rem; font-weight:700; color:#fff;
+    background:linear-gradient(92deg,var(--red),#b02a6e 60%,var(--violet)); transition:.16s; box-shadow:0 10px 26px rgba(229,72,77,.28); }
+  .btn:hover{ transform:translateY(-2px); }
+  .btn.ghost{ background:var(--panel2); border:1px solid var(--line); box-shadow:none; font-weight:600; }
+  .btn.small{ padding:8px 14px; font-size:.85rem; }
+  .row{ display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+  .row .btn{ flex:1; min-width:160px; }
+  .item{ display:flex; gap:10px; align-items:flex-start; border:1px solid var(--line); background:rgba(0,0,0,.26); border-radius:13px; padding:11px 13px; margin-top:9px; }
+  .item .body{ flex:1; line-height:1.5; font-size:.95rem; }
+  .item .meta{ color:var(--faint); font-size:.78rem; margin-top:2px; }
+  .item .del{ border:1px solid var(--line); background:transparent; color:var(--faint); border-radius:9px; padding:5px 10px; cursor:pointer; font-size:.8rem; }
+  .item .del:hover{ color:#ffb3ab; border-color:rgba(229,72,77,.6); }
+  .item input[type=checkbox]{ width:19px; height:19px; accent-color:var(--red); margin-top:2px; }
+  .done-txt{ text-decoration:line-through; color:var(--faint); }
+  .hint{ color:var(--faint); font-size:.88rem; line-height:1.5; }
+  .empty{ color:var(--faint); font-size:.93rem; padding:12px 2px; }
+  h2.sec{ font-size:1.05rem; margin-bottom:2px; }
+  footer{ text-align:center; color:var(--faint); font-size:.85rem; margin-top:28px; line-height:1.6; }
+  .toast{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(80px); background:#17142a; border:1px solid rgba(61,220,132,.55);
+    color:var(--txt); padding:11px 20px; border-radius:999px; font-size:.9rem; transition:.3s; z-index:9; box-shadow:0 14px 40px rgba(0,0,0,.5); }
+  .toast.show{ transform:translateX(-50%) translateY(0); }
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:0 14px; }
+  @media (max-width:620px){ .grid2{ grid-template-columns:1fr; } .msg{ max-width:94%; } }
+</style>
+</head>
+<body>
+<div class="bgfx"></div>
+<div class="wrap">
+  <header>
+    <div class="logo">Blxckroze</div>
+    <h1 id="agentTitle">Your Agent</h1>
+    <p class="sub">Your own personal AI. Your name for it, your key, your memory, on your device. Nothing here phones home to anybody's cloud.</p>
+    <div class="tabs" id="tabs">
+      <button class="tab on" data-tab="chat">Chat</button>
+      <button class="tab" data-tab="memory">Memory</button>
+      <button class="tab" data-tab="tasks">Tasks</button>
+      <button class="tab" data-tab="notes">Notes</button>
+      <button class="tab" data-tab="setup">Setup</button>
+    </div>
+  </header>
+
+  <section class="card" id="pane-chat">
+    <div id="chatLog"></div>
+    <div class="chatbar">
+      <textarea id="chatIn" placeholder="Talk to your agent..." rows="1"></textarea>
+      <button class="send" id="sendBtn">Send</button>
+    </div>
+    <p class="hint" style="margin-top:10px">Your agent can remember facts, keep your tasks, and take notes when you ask. Everything it saves shows up in the tabs above, and you can edit or delete any of it yourself.</p>
+  </section>
+
+  <section class="card hidden" id="pane-memory">
+    <h2 class="sec">What your agent remembers</h2>
+    <p class="hint">Long term memory. It reads this before every conversation. Add, fix, or delete anything. It is yours.</p>
+    <div id="memList"></div>
+    <label>Add a memory yourself</label>
+    <input type="text" id="memNew" placeholder="e.g. My son's birthday is in March">
+    <div class="row"><button class="btn small" id="memAdd" style="flex:0 0 auto">Add memory</button></div>
+  </section>
+
+  <section class="card hidden" id="pane-tasks">
+    <h2 class="sec">Tasks</h2>
+    <p class="hint">Your agent can add and finish these from chat. You can too.</p>
+    <div id="taskList"></div>
+    <label>Add a task yourself</label>
+    <input type="text" id="taskNew" placeholder="e.g. Call the mechanic Thursday">
+    <div class="row"><button class="btn small" id="taskAdd" style="flex:0 0 auto">Add task</button></div>
+  </section>
+
+  <section class="card hidden" id="pane-notes">
+    <h2 class="sec">Notes</h2>
+    <p class="hint">Longer things worth keeping. Your agent can save and find these from chat.</p>
+    <div id="noteList"></div>
+    <label>New note title</label>
+    <input type="text" id="noteTitle" placeholder="Title">
+    <label>Note</label>
+    <textarea id="noteBody" placeholder="Write it here..."></textarea>
+    <div class="row"><button class="btn small" id="noteAdd" style="flex:0 0 auto">Save note</button></div>
+  </section>
+
+  <section class="card hidden" id="pane-setup">
+    <h2 class="sec">Setup: make it yours</h2>
+    <div class="grid2">
+      <div>
+        <label>Your agent's name</label>
+        <input type="text" id="set-agent" placeholder="Roze">
+      </div>
+      <div>
+        <label>Your name</label>
+        <input type="text" id="set-user" placeholder="Your name">
+      </div>
+    </div>
+    <label>Groq key (BYOK, stored only in this browser)</label>
+    <input type="password" id="set-key" placeholder="Paste your free Groq key. Get one at console.groq.com">
+    <label>Brain (model)</label>
+    <select id="set-model">
+      <option value="llama-3.3-70b-versatile">Llama 3.3 70B (smart, balanced)</option>
+      <option value="openai/gpt-oss-120b">GPT-OSS 120B (deepest thinker)</option>
+      <option value="llama-3.1-8b-instant">Llama 3.1 8B (fastest, lightest)</option>
+    </select>
+    <label>Its soul: how it should talk and act</label>
+    <textarea id="set-soul"></textarea>
+    <label>About you: what it should know before you say a word</label>
+    <textarea id="set-about"></textarea>
+    <div class="row">
+      <button class="btn" id="saveSetup">Save setup</button>
+      <button class="btn ghost" id="exportBtn">Export everything (.json)</button>
+      <button class="btn ghost" id="importBtn">Import</button>
+      <input type="file" id="importFile" accept=".json" class="hidden">
+    </div>
+    <p class="hint" style="margin-top:12px">Export gives you one file with your settings, memory, tasks, notes, and chats. Keep it, move it, bring your agent to a new device. Your data is a file you own, not a hostage.</p>
+  </section>
+
+  <footer>Blxckroze Agent. Built to be owned: your key, your memory, your machine.</footer>
+</div>
+<div class="toast" id="toast">Saved</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const LS = 'blxckroze_agent_v1';
+const DEF_SOUL = "Warm, direct, and real. Talk like a sharp friend who gets things done, not a corporate assistant. Short answers unless detail is asked for. No fluff, no filler praise. Remember what matters to your user and use it. When you do not know, say so plainly. Never claim you did something you did not do.";
+let S = load();
+
+function load(){
+  try{
+    const raw = localStorage.getItem(LS);
+    if(raw){ const s = JSON.parse(raw); if(s && s.settings) return s; }
+  }catch(e){}
+  return {
+    settings: { agent:'Roze', user:'', key:'', model:'llama-3.3-70b-versatile', soul:DEF_SOUL, about:'' },
+    memory: [], tasks: [], notes: [], history: []
+  };
+}
+function save(){ try{ localStorage.setItem(LS, JSON.stringify(S)); }catch(e){} }
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1700); }
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmtDate(ts){ try{ return new Date(ts).toLocaleDateString(undefined,{ month:'short', day:'numeric' }); }catch(e){ return ''; } }
+
+/* ---------- Tools the agent can call ---------- */
+const TOOLS = [
+  { type:'function', function:{ name:'remember', description:'Save a fact to long term memory so you remember it in future conversations.', parameters:{ type:'object', properties:{ fact:{ type:'string', description:'The fact to remember, written plainly.' } }, required:['fact'] } } },
+  { type:'function', function:{ name:'recall', description:'Search long term memory. Use when the user asks what you remember, or before answering about their life, people, or past decisions.', parameters:{ type:'object', properties:{ query:{ type:'string', description:'Keywords to search for. Leave empty to get everything.' } }, required:[] } } },
+  { type:'function', function:{ name:'forget', description:'Delete a memory that matches the given text.', parameters:{ type:'object', properties:{ match:{ type:'string', description:'Text contained in the memory to delete.' } }, required:['match'] } } },
+  { type:'function', function:{ name:'add_task', description:'Add a task to the user task list.', parameters:{ type:'object', properties:{ task:{ type:'string' } }, required:['task'] } } },
+  { type:'function', function:{ name:'list_tasks', description:'List open and done tasks.', parameters:{ type:'object', properties:{}, required:[] } } },
+  { type:'function', function:{ name:'complete_task', description:'Mark a task done. Match by words contained in the task.', parameters:{ type:'object', properties:{ match:{ type:'string' } }, required:['match'] } } },
+  { type:'function', function:{ name:'save_note', description:'Save a longer note with a title.', parameters:{ type:'object', properties:{ title:{ type:'string' }, body:{ type:'string' } }, required:['title','body'] } } },
+  { type:'function', function:{ name:'find_notes', description:'Search saved notes by keywords in title or body.', parameters:{ type:'object', properties:{ query:{ type:'string' } }, required:[] } } },
+  { type:'function', function:{ name:'get_now', description:'Get the current date and time.', parameters:{ type:'object', properties:{}, required:[] } } }
+];
+
+function execTool(name, args){
+  args = args || {};
+  if(name === 'remember'){
+    const fact = (args.fact||'').trim(); if(!fact) return 'Nothing to remember.';
+    S.memory.push({ id:uid(), text:fact, ts:Date.now() }); save(); renderMemory();
+    return 'Remembered: ' + fact;
+  }
+  if(name === 'recall'){
+    const q = (args.query||'').toLowerCase().trim();
+    const hits = q? S.memory.filter(m=> m.text.toLowerCase().includes(q)) : S.memory;
+    if(!hits.length) return q? 'No memories match "' + args.query + '".' : 'Memory is empty.';
+    return hits.map(m=> '- ' + m.text).join('\n');
+  }
+  if(name === 'forget'){
+    const mtxt = (args.match||'').toLowerCase();
+    const before = S.memory.length;
+    S.memory = S.memory.filter(m=> !m.text.toLowerCase().includes(mtxt));
+    save(); renderMemory();
+    return S.memory.length < before? 'Forgot the matching memory.' : 'No memory matched that.';
+  }
+  if(name === 'add_task'){
+    const t = (args.task||'').trim(); if(!t) return 'No task given.';
+    S.tasks.push({ id:uid(), text:t, done:false, ts:Date.now() }); save(); renderTasks();
+    return 'Task added: ' + t;
+  }
+  if(name === 'list_tasks'){
+    if(!S.tasks.length) return 'The task list is empty.';
+    return S.tasks.map(t=> (t.done? '[done] ' : '[open] ') + t.text).join('\n');
+  }
+  if(name === 'complete_task'){
+    const mtxt = (args.match||'').toLowerCase();
+    const t = S.tasks.find(t=> !t.done && t.text.toLowerCase().includes(mtxt));
+    if(!t) return 'No open task matched that.';
+    t.done = true; save(); renderTasks();
+    return 'Done: ' + t.text;
+  }
+  if(name === 'save_note'){
+    const title = (args.title||'Note').trim(), body = (args.body||'').trim();
+    if(!body) return 'The note was empty.';
+    S.notes.push({ id:uid(), title, body, ts:Date.now() }); save(); renderNotes();
+    return 'Note saved: ' + title;
+  }
+  if(name === 'find_notes'){
+    const q = (args.query||'').toLowerCase().trim();
+    const hits = q? S.notes.filter(n=> (n.title+' '+n.body).toLowerCase().includes(q)) : S.notes;
+    if(!hits.length) return 'No notes found.';
+    return hits.map(n=> '## ' + n.title + '\n' + n.body).join('\n\n');
+  }
+  if(name === 'get_now'){
+    return new Date().toLocaleString(undefined,{ weekday:'long', year:'numeric', month:'long', day:'numeric', hour:'numeric', minute:'2-digit' });
+  }
+  return 'Unknown tool.';
+}
+
+/* ---------- System prompt ---------- */
+function systemPrompt(){
+  const st = S.settings;
+  const memDigest = S.memory.length? S.memory.slice(-40).map(m=> '- ' + m.text).join('\n') : '(nothing saved yet)';
+  const openTasks = S.tasks.filter(t=> !t.done);
+  return `You are ${st.agent}, a personal AI agent built by Blxckroze. You run on the user's own API key, in their browser, and everything you save stays on their device.
+
+Your soul: ${st.soul}
+
+Your user's name: ${st.user || '(not set yet)'}
+About your user: ${st.about || '(nothing written yet)'}
+
+Long term memory (most recent last):
+${memDigest}
+
+Open tasks right now: ${openTasks.length? openTasks.map(t=> t.text).join('; ') : 'none'}
+
+Rules:
+- Use your tools. When the user tells you a fact worth keeping, call remember. When they ask you to do list work, call the task and note tools. Do not just say you will, do it with a tool call.
+- Before answering questions about the user's life, people, plans, or past decisions, call recall if you are not sure.
+- Be honest about your limits: you live in this page. You cannot send emails, browse the web, or act while the page is closed.
+- Keep answers tight unless the user asks for depth.`;
+}
+
+/* ---------- Chat ---------- */
+function renderHistory(){
+  const log = $('chatLog'); log.innerHTML = '';
+  if(!S.history.length){
+    addBubble('sys', 'This is your agent. Set your Groq key in Setup, then just talk. Ask it to remember things, keep tasks, take notes.');
+  }
+  S.history.forEach(m=>{
+    if(m.role === 'user') addBubble('user', m.content, S.settings.user || 'You');
+    else if(m.role === 'assistant' && m.content) addBubble('agent', m.content, S.settings.agent);
+  });
+  log.scrollTop = log.scrollHeight;
+}
+function addBubble(kind, text, who){
+  const log = $('chatLog');
+  const d = document.createElement('div');
+  d.className = 'msg ' + kind;
+  d.innerHTML = (who && kind !== 'sys'? '<span class="who"></span>' : '') ;
+  if(who && kind !== 'sys') d.querySelector('.who').textContent = who;
+  d.appendChild(document.createTextNode(text));
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+  return d;
+}
+
+let busy = false;
+async function sendChat(){
+  if(busy) return;
+  const inp = $('chatIn'); const text = inp.value.trim();
+  if(!text) return;
+  const key = S.settings.key.trim();
+  S.history.push({ role:'user', content:text }); save();
+  addBubble('user', text, S.settings.user || 'You');
+  inp.value = '';
+  if(!key){
+    const msg = 'I need a brain first. Open the Setup tab and paste a free Groq key (console.groq.com). It stays in this browser only. Once it is in, I can think, remember, and work your lists.';
+    S.history.push({ role:'assistant', content:msg }); save();
+    addBubble('agent', msg, S.settings.agent);
+    return;
+  }
+  busy = true; $('sendBtn').disabled = true;
+  const thinking = addBubble('agent', 'Thinking...', S.settings.agent);
+  try{
+    const reply = await runAgent(text);
+    thinking.remove();
+    S.history.push({ role:'assistant', content:reply }); save();
+    addBubble('agent', reply, S.settings.agent);
+  }catch(e){
+    thinking.remove();
+    const msg = 'Something went wrong talking to the brain. Check your key and connection, then try again. (' + (e.message || e) + ')';
+    addBubble('agent', msg, S.settings.agent);
+  }
+  busy = false; $('sendBtn').disabled = false;
+}
+
+async function runAgent(userText){
+  const msgs = [ { role:'system', content: systemPrompt() },
+    ...S.history.slice(-16).filter(m=> m.role==='user' || m.role==='assistant').map(m=> ({ role:m.role, content:m.content })) ];
+  for(let round = 0; round < 5; round++){
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + S.settings.key.trim() },
+      body: JSON.stringify({ model: S.settings.model, temperature:.7, messages: msgs, tools: TOOLS, tool_choice:'auto' })
+    });
+    if(!res.ok){ const t = await res.text(); throw new Error('Groq said ' + res.status + '. ' + t.slice(0,180)); }
+    const j = await res.json();
+    const msg = j.choices && j.choices[0] && j.choices[0].message;
+    if(!msg) throw new Error('Empty reply from the model.');
+    if(msg.tool_calls && msg.tool_calls.length){
+      msgs.push({ role:'assistant', content: msg.content || '', tool_calls: msg.tool_calls });
+      for(const call of msg.tool_calls){
+        let args = {};
+        try{ args = JSON.parse(call.function.arguments || '{}'); }catch(e){}
+        const out = execTool(call.function.name, args);
+        msgs.push({ role:'tool', tool_call_id: call.id, content: String(out) });
+      }
+      continue;
+    }
+    return msg.content || '(no reply)';
+  }
+  return 'I ran through a lot of steps there and stopped myself. Try asking me in a smaller piece.';
+}
+
+$('sendBtn').onclick = sendChat;
+$('chatIn').addEventListener('keydown', e=>{ if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendChat(); } });
+
+/* ---------- Tabs ---------- */
+document.querySelectorAll('#tabs .tab').forEach(btn=>{
+  btn.onclick = ()=>{
+    document.querySelectorAll('#tabs .tab').forEach(b=> b.classList.toggle('on', b === btn));
+    ['chat','memory','tasks','notes','setup'].forEach(t=> $('pane-' + t).classList.toggle('hidden', t !== btn.dataset.tab));
+  };
+});
+
+/* ---------- Memory / Tasks / Notes panels ---------- */
+function itemRow(bodyHtml, meta, onDel){
+  const d = document.createElement('div'); d.className = 'item';
+  d.innerHTML = '<div class="body">' + bodyHtml + (meta? '<div class="meta"></div>' : '') + '</div><button class="del">Delete</button>';
+  if(meta) d.querySelector('.meta').textContent = meta;
+  d.querySelector('.del').onclick = onDel;
+  return d;
+}
+function renderMemory(){
+  const box = $('memList'); box.innerHTML = '';
+  if(!S.memory.length){ box.innerHTML = '<div class="empty">Nothing remembered yet. Tell your agent something worth keeping.</div>'; return; }
+  S.memory.slice().reverse().forEach(m=>{
+    box.appendChild(itemRow(esc(m.text), 'Saved ' + fmtDate(m.ts), ()=>{ S.memory = S.memory.filter(x=> x.id !== m.id); save(); renderMemory(); toast('Memory deleted'); }));
+  });
+}
+function renderTasks(){
+  const box = $('taskList'); box.innerHTML = '';
+  if(!S.tasks.length){ box.innerHTML = '<div class="empty">No tasks. Add one here or ask your agent in chat.</div>'; return; }
+  S.tasks.forEach(t=>{
+    const d = document.createElement('div'); d.className = 'item';
+    d.innerHTML = '<input type="checkbox"><div class="body"><span></span><div class="meta"></div></div><button class="del">Delete</button>';
+    const span = d.querySelector('span'); span.textContent = t.text; if(t.done) span.className = 'done-txt';
+    d.querySelector('.meta').textContent = (t.done? 'Done · ' : 'Open · ') + fmtDate(t.ts);
+    const cb = d.querySelector('input'); cb.checked = t.done;
+    cb.onchange = ()=>{ t.done = cb.checked; save(); renderTasks(); };
+    d.querySelector('.del').onclick = ()=>{ S.tasks = S.tasks.filter(x=> x.id !== t.id); save(); renderTasks(); };
+    box.appendChild(d);
+  });
+}
+function renderNotes(){
+  const box = $('noteList'); box.innerHTML = '';
+  if(!S.notes.length){ box.innerHTML = '<div class="empty">No notes yet.</div>'; return; }
+  S.notes.slice().reverse().forEach(n=>{
+    const d = itemRow('<b></b><div style="margin-top:3px"></div>', 'Saved ' + fmtDate(n.ts), ()=>{ S.notes = S.notes.filter(x=> x.id !== n.id); save(); renderNotes(); toast('Note deleted'); });
+    d.querySelector('b').textContent = n.title;
+    d.querySelector('.body div').textContent = n.body;
+    box.appendChild(d);
+  });
+}
+$('memAdd').onclick = ()=>{ const v = $('memNew').value.trim(); if(!v) return; S.memory.push({ id:uid(), text:v, ts:Date.now() }); $('memNew').value=''; save(); renderMemory(); toast('Memory added'); };
+$('taskAdd').onclick = ()=>{ const v = $('taskNew').value.trim(); if(!v) return; S.tasks.push({ id:uid(), text:v, done:false, ts:Date.now() }); $('taskNew').value=''; save(); renderTasks(); toast('Task added'); };
+$('noteAdd').onclick = ()=>{ const t = $('noteTitle').value.trim() || 'Note'; const b = $('noteBody').value.trim(); if(!b) return; S.notes.push({ id:uid(), title:t, body:b, ts:Date.now() }); $('noteTitle').value=''; $('noteBody').value=''; save(); renderNotes(); toast('Note saved'); };
+
+/* ---------- Setup ---------- */
+function fillSetup(){
+  $('set-agent').value = S.settings.agent; $('set-user').value = S.settings.user;
+  $('set-key').value = S.settings.key; $('set-model').value = S.settings.model;
+  $('set-soul').value = S.settings.soul; $('set-about').value = S.settings.about;
+  $('agentTitle').textContent = S.settings.agent ? (S.settings.agent + ', your agent') : 'Your Agent';
+}
+$('saveSetup').onclick = ()=>{
+  S.settings.agent = $('set-agent').value.trim() || 'Roze';
+  S.settings.user = $('set-user').value.trim();
+  S.settings.key = $('set-key').value.trim();
+  S.settings.model = $('set-model').value;
+  S.settings.soul = $('set-soul').value.trim() || DEF_SOUL;
+  S.settings.about = $('set-about').value.trim();
+  save(); fillSetup(); renderHistory(); toast('Setup saved');
+};
+$('exportBtn').onclick = ()=>{
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(S, null, 2)], { type:'application/json' }));
+  a.download = 'blxckroze-agent-export.json'; a.click(); URL.revokeObjectURL(a.href);
+  toast('Exported. That file is your whole agent.');
+};
+$('importBtn').onclick = ()=> $('importFile').click();
+$('importFile').addEventListener('change', e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{ try{ const data = JSON.parse(r.result); if(!data.settings) throw new Error('bad file'); S = data; save(); fillSetup(); renderMemory(); renderTasks(); renderNotes(); renderHistory(); toast('Imported. Your agent is home.'); }catch(err){ toast('That file did not import'); } };
+  r.readAsText(f);
+});
+
+fillSetup(); renderMemory(); renderTasks(); renderNotes(); renderHistory();
+</script>
+</body>
+</html>
