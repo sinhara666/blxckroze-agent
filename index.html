@@ -102,7 +102,7 @@
       <textarea id="chatIn" placeholder="Talk to your agent..." rows="1"></textarea>
       <button class="send" id="sendBtn">Send</button>
     </div>
-    <p class="hint" style="margin-top:10px">Your agent can remember facts, keep your tasks, and take notes when you ask. Everything it saves shows up in the tabs above, and you can edit or delete any of it yourself.</p>
+    <p class="hint" style="margin-top:10px">Your agent can remember facts, keep your tasks, take notes, and browse the web for you: ask it to look something up, read a link, or compare options. Everything it saves shows up in the tabs above, and you can edit or delete any of it yourself.</p>
   </section>
 
   <section class="card hidden" id="pane-memory">
@@ -148,6 +148,8 @@
     </div>
     <label>Groq key (BYOK, stored only in this browser)</label>
     <input type="password" id="set-key" placeholder="Paste your free Groq key. Get one at console.groq.com">
+    <label>Optional: Tavily key for stronger web search</label>
+    <input type="password" id="set-tavily" placeholder="Free at tavily.com. Without it, search still works, just lighter.">
     <label>Brain (model)</label>
     <select id="set-model">
       <option value="llama-3.3-70b-versatile">Llama 3.3 70B (smart, balanced)</option>
@@ -180,10 +182,10 @@ let S = load();
 function load(){
   try{
     const raw = localStorage.getItem(LS);
-    if(raw){ const s = JSON.parse(raw); if(s && s.settings) return s; }
+    if(raw){ const s = JSON.parse(raw); if(s && s.settings){ if(s.settings.tavily === undefined) s.settings.tavily = ''; return s; } }
   }catch(e){}
   return {
-    settings: { agent:'Roze', user:'', key:'', model:'llama-3.3-70b-versatile', soul:DEF_SOUL, about:'' },
+    settings: { agent:'Roze', user:'', key:'', tavily:'', model:'llama-3.3-70b-versatile', soul:DEF_SOUL, about:'' },
     memory: [], tasks: [], notes: [], history: []
   };
 }
@@ -203,11 +205,88 @@ const TOOLS = [
   { type:'function', function:{ name:'complete_task', description:'Mark a task done. Match by words contained in the task.', parameters:{ type:'object', properties:{ match:{ type:'string' } }, required:['match'] } } },
   { type:'function', function:{ name:'save_note', description:'Save a longer note with a title.', parameters:{ type:'object', properties:{ title:{ type:'string' }, body:{ type:'string' } }, required:['title','body'] } } },
   { type:'function', function:{ name:'find_notes', description:'Search saved notes by keywords in title or body.', parameters:{ type:'object', properties:{ query:{ type:'string' } }, required:[] } } },
-  { type:'function', function:{ name:'get_now', description:'Get the current date and time.', parameters:{ type:'object', properties:{}, required:[] } } }
+  { type:'function', function:{ name:'get_now', description:'Get the current date and time.', parameters:{ type:'object', properties:{}, required:[] } } },
+  { type:'function', function:{ name:'web_search', description:'Search the live web. Use for anything current or factual you do not already know: news, prices, products, people, businesses, how tos. Returns titles, links, and snippets.', parameters:{ type:'object', properties:{ query:{ type:'string', description:'The search query.' } }, required:['query'] } } },
+  { type:'function', function:{ name:'read_page', description:'Open a web page and read its text. Use after web_search to read the most promising result, or when the user gives you a link. Returns the page text.', parameters:{ type:'object', properties:{ url:{ type:'string', description:'The full URL to open.' } }, required:['url'] } } }
 ];
+
+/* ---------- Web tools ---------- */
+async function fetchText(url, ms){
+  const ctl = new AbortController();
+  const timer = setTimeout(()=> ctl.abort(), ms || 14000);
+  try{
+    const r = await fetch(url, { signal: ctl.signal });
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.text();
+  } finally { clearTimeout(timer); }
+}
+function stripHtml(html){
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/\s+/g, ' ').trim();
+}
+async function webSearch(query){
+  if(!query) return 'No search query given.';
+  const tk = (S.settings.tavily || '').trim();
+  if(tk){
+    try{
+      const r = await fetch('https://api.tavily.com/search', { method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ api_key: tk, query, max_results: 6, search_depth:'basic' }) });
+      if(r.ok){
+        const j = await r.json();
+        if(j.results && j.results.length){
+          return j.results.map((x,i)=> (i+1) + '. ' + x.title + '\n' + x.url + '\n' + (x.content||'').slice(0, 420)).join('\n\n');
+        }
+      }
+    }catch(e){ /* fall through to free search */ }
+  }
+  try{
+    const j = JSON.parse(await fetchText('https://api.duckduckgo.com/?q=' + encodeURIComponent(query) + '&format=json&no_html=1&skip_disambig=1'));
+    const lines = [];
+    if(j.AbstractText) lines.push('Summary: ' + j.AbstractText + (j.AbstractURL? ' (' + j.AbstractURL + ')' : ''));
+    (j.RelatedTopics || []).slice(0, 8).forEach(t=>{
+      if(t.Text && t.FirstURL) lines.push('- ' + t.Text.slice(0, 300) + '\n  ' + t.FirstURL);
+    });
+    if(lines.length) return lines.join('\n');
+  }catch(e){ /* fall through */ }
+  try{
+    const html = await fetchText('https://api.allorigins.win/raw?url=' + encodeURIComponent('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query)));
+    const out = [];
+    const re = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+    let m;
+    while((m = re.exec(html)) && out.length < 6){
+      let u = m[1];
+      const ud = u.match(/uddg=([^&]+)/);
+      if(ud) { try{ u = decodeURIComponent(ud[1]); }catch(e){} }
+      out.push('- ' + stripHtml(m[2]) + '\n  ' + u);
+    }
+    if(out.length) return out.join('\n');
+  }catch(e){ /* fall through */ }
+  return 'Search came back empty this time. Try different words, or give me a specific link to read.';
+}
+async function readPage(url){
+  if(!/^https?:\/\//i.test(url)) return 'That does not look like a full web link. Give me the whole URL starting with http.';
+  try{
+    const t = await fetchText('https://r.jina.ai/' + url, 18000);
+    const clean = t.replace(/\n{3,}/g, '\n\n').trim();
+    if(clean.length > 120) return clean.slice(0, 9000) + (clean.length > 9000? '\n\n[Page was longer, this is the first part.]' : '');
+  }catch(e){ /* fall through */ }
+  try{
+    const html = await fetchText('https://api.allorigins.win/raw?url=' + encodeURIComponent(url), 18000);
+    const clean = stripHtml(html);
+    if(clean.length > 120) return clean.slice(0, 9000) + (clean.length > 9000? '\n\n[Page was longer, this is the first part.]' : '');
+  }catch(e){ /* fall through */ }
+  return 'I could not read that page. It may block readers, need a login, or be mostly images and scripts.';
+}
 
 function execTool(name, args){
   args = args || {};
+  if(name === 'web_search') return webSearch((args.query||'').trim());
+  if(name === 'read_page') return readPage((args.url||'').trim());
   if(name === 'remember'){
     const fact = (args.fact||'').trim(); if(!fact) return 'Nothing to remember.';
     S.memory.push({ id:uid(), text:fact, ts:Date.now() }); save(); renderMemory();
@@ -280,7 +359,8 @@ Open tasks right now: ${openTasks.length? openTasks.map(t=> t.text).join('; ') :
 Rules:
 - Use your tools. When the user tells you a fact worth keeping, call remember. When they ask you to do list work, call the task and note tools. Do not just say you will, do it with a tool call.
 - Before answering questions about the user's life, people, plans, or past decisions, call recall if you are not sure.
-- Be honest about your limits: you live in this page. You cannot send emails, browse the web, or act while the page is closed.
+- You can browse: use web_search for anything current or factual you do not already know, then read_page on the best results before answering. When you use the web, include the links you relied on so your user can check them.
+- Be honest about your limits: you live in this page. You can read the web, but you cannot log into sites, click through accounts, buy things, send emails, or act while the page is closed.
 - Keep answers tight unless the user asks for depth.`;
 }
 
@@ -356,7 +436,7 @@ async function runAgent(userText){
       for(const call of msg.tool_calls){
         let args = {};
         try{ args = JSON.parse(call.function.arguments || '{}'); }catch(e){}
-        const out = execTool(call.function.name, args);
+        const out = await execTool(call.function.name, args);
         msgs.push({ role:'tool', tool_call_id: call.id, content: String(out) });
       }
       continue;
@@ -423,7 +503,7 @@ $('noteAdd').onclick = ()=>{ const t = $('noteTitle').value.trim() || 'Note'; co
 /* ---------- Setup ---------- */
 function fillSetup(){
   $('set-agent').value = S.settings.agent; $('set-user').value = S.settings.user;
-  $('set-key').value = S.settings.key; $('set-model').value = S.settings.model;
+  $('set-key').value = S.settings.key; $('set-tavily').value = S.settings.tavily || ''; $('set-model').value = S.settings.model;
   $('set-soul').value = S.settings.soul; $('set-about').value = S.settings.about;
   $('agentTitle').textContent = S.settings.agent ? (S.settings.agent + ', your agent') : 'Your Agent';
 }
@@ -431,6 +511,7 @@ $('saveSetup').onclick = ()=>{
   S.settings.agent = $('set-agent').value.trim() || 'Roze';
   S.settings.user = $('set-user').value.trim();
   S.settings.key = $('set-key').value.trim();
+  S.settings.tavily = $('set-tavily').value.trim();
   S.settings.model = $('set-model').value;
   S.settings.soul = $('set-soul').value.trim() || DEF_SOUL;
   S.settings.about = $('set-about').value.trim();
